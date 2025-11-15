@@ -1,5 +1,3 @@
-# data/tokenizer.py
-
 class ShortGPTTokenizer:
     """
     Tokenizer for Short-GPT using the fixed vocabulary.
