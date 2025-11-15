@@ -4,7 +4,7 @@ class ShortGPTTokenizer:
     Converts between tokens and integer IDs using a predefined, immutable vocabulary.
     """
 
-    def __init__(self):
+    def __init__(self, vocab_size=23):
         # Fixed vocabulary order (exactly 23 tokens)
         self.tokens = [
             "<EDGE>",
@@ -20,8 +20,7 @@ class ShortGPTTokenizer:
         self.token_to_id = {tok: i for i, tok in enumerate(self.tokens)}
         self.id_to_token = {i: tok for tok, i in self.token_to_id.items()}
 
-        # vocab size is now a normal attribute
-        self.vocab_size = 32
+        self.vocab_size = vocab_size
 
     def encode(self, token_list):
         """Convert a list of string tokens into a list of integer token IDs."""
