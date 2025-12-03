@@ -84,7 +84,7 @@ def exhash(example: Dict) -> int:
 def relabel_graph(G: nx.Graph) -> nx.Graph:
     """Relabel the nodes of a graph."""
     nodes = list(G.nodes())
-    rnodes = list(itertools.combinations(range(1, 15), len(nodes)))[0]
+    rnodes = list(itertools.combinations(range(1, 16), len(nodes)))[0]
     new_nodes = list(rnodes)
     mapping = {nodes[idx]: new_nodes[idx] for idx in range(len(nodes))}
     relabeled_graph = nx.relabel_nodes(G, mapping)
@@ -100,10 +100,11 @@ def runner(start, end):
             graphs = pickle.load(f)
             op = f"graph_{i}_ex.jsonl"
             with open(op, "w") as out:
-                if i < 9:
+                print(f"Processing {len(graphs)} graphs for n={i}")
+                if i < 6:
                     for j in range(len(graphs)):
                         nodes = list(graphs[j].nodes)
-                        pairs = itertools.combinations(range(1, 15), i)
+                        pairs = itertools.combinations(range(1, 16), i)
                         for k in pairs:
                             new_nodes = list(k)
                             mapping = {nodes[idx]: new_nodes[idx] for idx in range(len(nodes))}
@@ -111,13 +112,28 @@ def runner(start, end):
                             ex = build_example(id, cnt, relabeled_graph)
                             id += 1
                             out.write(json.dumps(ex) + "\n")
-                            if cnt % 1000 == 0:
-                                print(f"Generated {cnt} examples for n={i}.")
                             cnt += 1
                     end_time = time.time()
                     print(f"Generated {cnt-1} examples for n={i} in {end_time - start_time:.4f} seconds.")
                     print(f"Examples saved to {op}")
-                if i >= 9:
+                elif i>=6 and i<=8:
+                    max_limit = 100000
+                    while cnt < max_limit:
+                        for g in graphs:
+                            if cnt >= max_limit:
+                                break
+                            nodes = list(g.nodes())
+                            new_nodes = random.sample(range(1, 16), len(nodes))
+                            mapping = {nodes[idx]: new_nodes[idx] for idx in range(len(nodes))}
+                            relabeled_graph = nx.relabel_nodes(g, mapping)
+                            ex = build_example(id, cnt, relabeled_graph)
+                            out.write(json.dumps(ex) + "\n")
+                            id += 1
+                            cnt += 1
+                    end_time = time.time()
+                    print(f"Generated {cnt} examples for n={i} in {end_time - start_time:.4f} seconds.")
+                    print(f"Examples saved to {op}")
+                if i > 8:
                     for graph in graphs:
                         if i != 15:
                             relabeled_graph = relabel_graph(graph)
@@ -126,8 +142,6 @@ def runner(start, end):
                         ex = build_example(id, cnt, relabeled_graph)
                         id += 1
                         cnt += 1
-                        if cnt % 1000 == 0:
-                            print(f"Generated {cnt} examples for n={i}.")
                         out.write(json.dumps(ex) + "\n")
                     end_time = time.time()
                     print(f"Generated {cnt-1} examples for n={i} in {end_time - start_time:.4f} seconds.")
@@ -135,6 +149,15 @@ def runner(start, end):
                 files.append(op)
         print(f"Generated {id-1} examples in total.")
     return files
+
+def trunner(start, end):
+    for i in range(start, end + 1):
+        with open('/Users/sivab/Documents/purdue/fall2025/nlp/project/antigrav/graphs/' + f"graphs_{i}.pkl", "rb") as f:
+            graphs = pickle.load(f)
+            print(f"Processing {len(graphs)} graphs for n={i}")
+            pairs = itertools.combinations(range(1, 16), i)
+            pairs = list(pairs)
+            print(f"Generated {len(pairs)} combinations for n={i}")
 
 if __name__ == "__main__":
     start = int(sys.argv[1])
@@ -149,3 +172,8 @@ if __name__ == "__main__":
                 for line in f2:
                     f.write(line)
     print(f"Merged {len(files)} files to {merged_file}.")
+
+# if __name__ == "__main__":
+#     start = int(sys.argv[1])
+#     end = int(sys.argv[2])
+#     trunner(start, end)
