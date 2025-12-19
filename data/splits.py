@@ -67,4 +67,6 @@ def get_splits(
     val_rows = [rows[i] for i in val_idx]
     test_rows = [rows[i] for i in test_idx]
 
+    print(f"Split sizes - Total: {len(rows)}, Train: {len(train_rows)}, Val: {len(val_rows)}, Test: {len(test_rows)}")
+
     return train_rows, val_rows, test_rows

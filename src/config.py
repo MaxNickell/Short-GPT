@@ -30,10 +30,15 @@ class PretrainConfig:
     lr: float = 3e-4
     weight_decay: float = 0.01
     max_grad_norm: float = 1.0
-    patience: int = 3
-    min_delta: float = 1e-3
+
+    # Step-based evaluation and early stopping
+    eval_every: int = 5000      # Evaluate every N steps
+    patience: int = 3           # Stop after N evals without improvement
+    min_delta: float = 0.001    # Minimum improvement to reset patience
+
     log_every: int = 500
     save_path: str = "checkpoints/pretrained.pt"
+    log_path: str = "logs/pretrain.jsonl"
 
 
 @dataclass
@@ -50,3 +55,4 @@ class RLConfig:
     use_baseline: bool = True
     log_every: int = 100
     save_path: str = "checkpoints/rl_finetuned.pt"
+    log_path: str = "logs/rl.jsonl"

@@ -1,5 +1,7 @@
-import math
+"""Dense reward function for ShortGPT RL training."""
+
 from src.tokenizer import ShortGPTTokenizer
+
 
 def compute_path_reward(
     row: dict,
@@ -7,59 +9,67 @@ def compute_path_reward(
     tokenizer: ShortGPTTokenizer,
 ) -> float:
     """
-    Compute a scalar reward in [0, 1] for a generated sequence.
+    Compute a dense reward for a generated path sequence.
 
-    Rules:
-      1) If the output does NOT have a well-formed path structure:
-           <START_PATH> num (<TO> num)* <END_PATH>
-         → reward = 0.0  (invalid)
+    Three cases:
+      Case 1 - Invalid structure (reward = -1.0):
+        Output doesn't follow <START_PATH>node<TO>node<TO>...<TO>node<END_PATH> format
 
-      2) Else, if the node sequence is not a valid path on the graph
-         (wrong start, wrong end, or invalid edges)
-         → reward = 0.0  (invalid)
+      Case 2 - Valid structure, invalid path (reward in [-1.0, 0.0)):
+        Correct format but uses non-existent edges.
+        R = -0.5 + (valid_edges/total_edges) * 0.5
+            - 0.25 if first node != origin
+            - 0.25 if last node != destination
 
-      3) Else (valid path), compare its length L to the optimal shortest
-         path length L*. We use a relative length penalty:
-
-           rel_extra = max(L - L*, 0) / L*
-           reward = max(1.0 - rel_extra, 0.0)
-
-         So:
-           - exact shortest path: L = L* → rel_extra = 0 → reward = 1.0
-           - slightly longer path: reward in (0,1)
-           - much longer path: reward may go toward 0.0
+      Case 3 - Valid path (reward in (1.0, 2.0]):
+        All edges exist and path connects origin to destination.
+        R = 1 + L*/L
+        where L* = optimal path length, L = generated path length
     """
+    origin = row["origin"]
+    destination = row["destination"]
+    adl = row["adl"]
+    L_opt = row["shortest_path_length"]
+
     # ------------------------
     # 1) Tokenize and extract path segment
     # ------------------------
-    tokens = tokenizer.tokenize_string(generated_str)
+    try:
+        tokens = tokenizer.tokenize_string(generated_str)
+    except ValueError:
+        # Malformed string (contains tokens not in vocabulary)
+        return -1.0
 
     # Find <START_PATH> and <END_PATH>
     try:
         start_idx = tokens.index("<START_PATH>")
         end_idx = tokens.index("<END_PATH>")
     except ValueError:
-        # Missing one of the markers → structurally invalid
-        return 0.0
+        # Missing one of the markers
+        return -1.0
 
     if end_idx <= start_idx:
-        # End comes before start → invalid
-        return 0.0
+        # End comes before start
+        return -1.0
 
     # Path segment: [<START_PATH>, ..., <END_PATH>]
     path_tokens = tokens[start_idx:end_idx + 1]
 
     # Must start and end correctly
     if path_tokens[0] != "<START_PATH>" or path_tokens[-1] != "<END_PATH>":
-        return 0.0
+        return -1.0
 
     # Internal tokens between start and end
-    internal = path_tokens[1:-1]  # everything between START and END
+    internal = path_tokens[1:-1]
 
-    # We expect pattern: num (<TO> num)*  => length >= 1 and odd
-    if len(internal) < 1 or (len(internal) % 2) != 1:
-        # e.g., just "<START_PATH><END_PATH>" or wrong alternation
-        return 0.0
+    # We expect pattern: num (<TO> num)* => length >= 1 and odd
+    # Minimum valid: single node (but that means 0 edges, only valid if origin=dest)
+    if len(internal) < 1:
+        return -1.0
+
+    # For a path with edges, need odd number of tokens: node, <TO>, node, <TO>, node...
+    if len(internal) > 1 and (len(internal) % 2) != 1:
+        return -1.0
 
     # ------------------------
     # 2) Check structural pattern and extract node sequence
@@ -70,68 +80,68 @@ def compute_path_reward(
         if j % 2 == 0:
             # Even positions: must be a node token "0".."15"
             if tok not in tokenizer.tokens or tok.startswith("<"):
-                return 0.0
+                return -1.0
             try:
                 node_id = int(tok)
             except ValueError:
-                return 0.0
+                return -1.0
             node_tokens.append(node_id)
         else:
             # Odd positions: must be <TO>
             if tok != "<TO>":
-                return 0.0
+                return -1.0
 
-    # Now node_tokens is [v0, v1, ..., vK]
     if len(node_tokens) < 1:
-        return 0.0
+        return -1.0
 
-    origin = row["origin"]
-    destination = row["destination"]
+    # Special case: single node path (0 edges)
+    if len(node_tokens) == 1:
+        # Only valid if origin == destination and the single node matches
+        if origin == destination and node_tokens[0] == origin:
+            return 2.0  # Optimal for L*=0 case
+        else:
+            # Invalid structure for a path that should have edges
+            return -1.0
 
     # ------------------------
-    # 3) Graph validity checks
+    # 3) Check edges and compute reward
     # ------------------------
-
-    # Check start and end
-    if node_tokens[0] != origin:
-        return 0.0
-    if node_tokens[-1] != destination:
-        return 0.0
-
-    # Adjacency list may have string keys and string/int values; handle both
-    adl = row["adl"]
-
     def neighbors(u: int) -> set:
         """Get neighbors as a set of integers for consistent comparison."""
         raw_neighbors = adl.get(str(u)) or adl.get(u) or []
-        # Convert all neighbors to int for consistent comparison
         return {int(n) for n in raw_neighbors}
 
-    # Check each edge v_i -> v_{i+1}
+    # Count valid and total edges
+    total_edges = len(node_tokens) - 1
+    valid_edges = 0
+
     for u, v in zip(node_tokens[:-1], node_tokens[1:]):
-        if v not in neighbors(u):
-            return 0.0  # invalid edge
+        if v in neighbors(u):
+            valid_edges += 1
 
-    # If we get here, the path is structurally correct AND graph-valid
-    # ------------------------
-    # 4) Optimality / length-based reward
-    # ------------------------
-    L_opt = row["shortest_path_length"]  # optimal number of edges
+    # Check if path is fully valid (all edges exist)
+    if valid_edges == total_edges:
+        # Also need correct start and end for a valid path
+        if node_tokens[0] == origin and node_tokens[-1] == destination:
+            # Case 3: Valid path
+            L = total_edges
+            if L_opt <= 0:
+                # Edge case: origin == destination, any valid path is optimal
+                return 2.0
+            return 1.0 + L_opt / L
+        # Fall through to Case 2 (all edges valid but wrong endpoints)
 
-    # Generated path length in edges: len(nodes) - 1
-    L = max(len(node_tokens) - 1, 0)
+    # Case 2: Valid structure, invalid path
+    # Base reward based on edge validity
+    if total_edges > 0:
+        R_base = -0.5 + (valid_edges / total_edges) * 0.5
+    else:
+        R_base = -0.5
 
-    if L_opt <= 0:
-        # Degenerate case; just treat valid path as 1.0
-        return 1.0
+    # Endpoint penalties
+    start_penalty = 0.25 if node_tokens[0] != origin else 0.0
+    end_penalty = 0.25 if node_tokens[-1] != destination else 0.0
 
-    # In a correct dataset, L < L_opt shouldn't happen. If it does, clamp.
-    extra = max(L - L_opt, 0)
-    rel_extra = extra / L_opt  # relative extra steps
-
-    # Reward in [0,1]: 1 when optimal, decreasing as rel_extra grows
-    reward = 1.0 - rel_extra
-    if reward < 0.0:
-        reward = 0.0
+    reward = R_base - start_penalty - end_penalty
 
     return float(reward)

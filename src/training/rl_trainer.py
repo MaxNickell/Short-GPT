@@ -10,6 +10,7 @@ import torch.nn as nn
 from src.config import RLConfig
 from src.tokenizer import ShortGPTTokenizer
 from src.rl.reward import compute_path_reward
+from .logger import log_metrics
 
 
 class RLTrainer:
@@ -82,6 +83,7 @@ class RLTrainer:
         )
 
         n = len(train_rows)
+        global_step = 0
 
         for epoch in range(1, self.config.num_epochs + 1):
             print(f"=== RL Epoch {epoch}/{self.config.num_epochs} ===")
@@ -89,6 +91,7 @@ class RLTrainer:
 
             for step in range(1, self.config.steps_per_epoch + 1):
                 self.model.train()
+                global_step += 1
 
                 # Sample batch
                 batch_rows = [train_rows[random.randint(0, n - 1)] for _ in range(self.config.batch_size)]
@@ -105,9 +108,10 @@ class RLTrainer:
                 rewards_t = torch.tensor(rewards, device=self.device)
                 log_prob_sums_t = torch.stack(log_prob_sums)
 
-                # REINFORCE with baseline
-                if self.config.use_baseline:
-                    advantages = rewards_t - rewards_t.mean()
+                # REINFORCE with leave-one-out baseline (unbiased)
+                if self.config.use_baseline and rewards_t.numel() > 1:
+                    b = (rewards_t.sum() - rewards_t) / (rewards_t.numel() - 1)
+                    advantages = rewards_t - b
                 else:
                     advantages = rewards_t
 
@@ -122,9 +126,18 @@ class RLTrainer:
                 epoch_rewards.append(avg_reward)
 
                 if step % self.config.log_every == 0:
-                    print(f"Step {step}: avg_reward={avg_reward:.4f}, loss={loss.item():.4f}")
+                    print(f"Step {global_step}: avg_reward={avg_reward:.4f}, loss={loss.item():.4f}")
 
-            print(f"Epoch {epoch} mean reward: {sum(epoch_rewards)/len(epoch_rewards):.4f}")
+                    log_metrics(
+                        self.config.log_path,
+                        step=global_step,
+                        epoch=epoch,
+                        avg_reward=avg_reward,
+                        loss=loss.item(),
+                    )
+
+            mean_reward = sum(epoch_rewards) / len(epoch_rewards)
+            print(f"Epoch {epoch} mean reward: {mean_reward:.4f}")
             self._save(self.config.save_path)
 
     def _save(self, path: str):
