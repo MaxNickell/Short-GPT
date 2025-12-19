@@ -1,11 +1,20 @@
+"""
+Dataset generation script for ShortGPT.
+
+Generates training examples from graph pickle files.
+Each example contains a graph representation and a shortest path query.
+"""
+
 import json
 import random
-import networkx as nx
-from typing import Dict, List
-import sys
-import time
-import pickle
+import argparse
 import itertools
+import pickle
+import time
+from pathlib import Path
+from typing import Dict, List
+
+import networkx as nx
 
 
 def generate_adjacency_list(G: nx.Graph) -> Dict[int, List[int]]:
@@ -16,23 +25,25 @@ def generate_adjacency_list(G: nx.Graph) -> Dict[int, List[int]]:
         adj_list[v].append(u)
     return adj_list
 
+
 def serialize_graph(G: nx.Graph) -> str:
-    """Serialize using your proposal's vocabulary."""
+    """Serialize graph using the ShortGPT vocabulary."""
     edges = list(G.edges())
     if len(edges) == 0:
         return ""
     s = ""
     for u, v in edges:
         s += f"<EDGE>{u}<BD>{v}"
-
     return s
+
 
 def shortest_path_repr(G: nx.Graph, s: int, t: int) -> List[int]:
     """Return the shortest path via BFS."""
     return nx.shortest_path(G, source=s, target=t)
 
+
 def serialize_shortest_path(path: List[int]) -> str:
-    """Serialize path using your vocabulary."""
+    """Serialize path using the ShortGPT vocabulary."""
     s = "<START_PATH>"
     s += str(path[0])
     for node in path[1:]:
@@ -40,9 +51,11 @@ def serialize_shortest_path(path: List[int]) -> str:
     s += "<END_PATH>"
     return s
 
+
 def connected_graph(G: nx.Graph) -> bool:
     """Check if the graph is connected."""
     return nx.is_connected(G)
+
 
 def build_example(id: int, cnt: int, G: nx.Graph) -> Dict:
     """Build a full training example."""
@@ -68,11 +81,11 @@ def build_example(id: int, cnt: int, G: nx.Graph) -> Dict:
     }
     return example
 
+
 def exhash(example: Dict) -> int:
     """Create a hash for a training example based on its content."""
     hsh = hash((
         example["num_nodes"],
-        tuple(example["nodes"]),
         example["graph_repr"],
         example["origin"],
         example["destination"],
@@ -81,8 +94,9 @@ def exhash(example: Dict) -> int:
     ))
     return hsh
 
+
 def relabel_graph(G: nx.Graph) -> nx.Graph:
-    """Relabel the nodes of a graph."""
+    """Relabel the nodes of a graph to use nodes 1-15."""
     nodes = list(G.nodes())
     rnodes = list(itertools.combinations(range(1, 16), len(nodes)))[0]
     new_nodes = list(rnodes)
@@ -90,18 +104,39 @@ def relabel_graph(G: nx.Graph) -> nx.Graph:
     relabeled_graph = nx.relabel_nodes(G, mapping)
     return relabeled_graph
 
-def runner(start, end):
+
+def runner(start: int, end: int, graphs_dir: Path, output_dir: Path):
+    """
+    Generate dataset examples for graphs with node counts from start to end.
+
+    Args:
+        start: Minimum number of nodes
+        end: Maximum number of nodes
+        graphs_dir: Directory containing graph pickle files
+        output_dir: Directory to save output JSONL files
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
     files = []
     id = 1
+
     for i in range(start, end + 1):
         cnt = 1
         start_time = time.time()
-        with open('/Users/sivab/Documents/purdue/fall2025/nlp/project/antigrav/graphs/' + f"graphs_{i}.pkl", "rb") as f:
+
+        graph_file = graphs_dir / f"graphs_{i}.pkl"
+        if not graph_file.exists():
+            print(f"Warning: {graph_file} not found, skipping n={i}")
+            continue
+
+        with open(graph_file, "rb") as f:
             graphs = pickle.load(f)
-            op = f"graph_{i}_ex.jsonl"
+            op = output_dir / f"graph_{i}_ex.jsonl"
+
             with open(op, "w") as out:
                 print(f"Processing {len(graphs)} graphs for n={i}")
+
                 if i < 6:
+                    # For small graphs, enumerate all node label combinations
                     for j in range(len(graphs)):
                         nodes = list(graphs[j].nodes)
                         pairs = itertools.combinations(range(1, 16), i)
@@ -115,8 +150,9 @@ def runner(start, end):
                             cnt += 1
                     end_time = time.time()
                     print(f"Generated {cnt-1} examples for n={i} in {end_time - start_time:.4f} seconds.")
-                    print(f"Examples saved to {op}")
-                elif i>=6 and i<=8:
+
+                elif i >= 6 and i <= 8:
+                    # For medium graphs, sample up to max_limit examples
                     max_limit = 100000
                     while cnt < max_limit:
                         for g in graphs:
@@ -131,9 +167,10 @@ def runner(start, end):
                             id += 1
                             cnt += 1
                     end_time = time.time()
-                    print(f"Generated {cnt} examples for n={i} in {end_time - start_time:.4f} seconds.")
-                    print(f"Examples saved to {op}")
-                if i > 8:
+                    print(f"Generated {cnt-1} examples for n={i} in {end_time - start_time:.4f} seconds.")
+
+                else:  # i > 8
+                    # For large graphs, use each graph once with relabeling
                     for graph in graphs:
                         if i != 15:
                             relabeled_graph = relabel_graph(graph)
@@ -145,35 +182,65 @@ def runner(start, end):
                         out.write(json.dumps(ex) + "\n")
                     end_time = time.time()
                     print(f"Generated {cnt-1} examples for n={i} in {end_time - start_time:.4f} seconds.")
-                    print(f"Examples saved to {op}")
+
+                print(f"Examples saved to {op}")
                 files.append(op)
-        print(f"Generated {id-1} examples in total.")
+
+        print(f"Generated {id-1} examples in total so far.")
+
     return files
 
-def trunner(start, end):
-    for i in range(start, end + 1):
-        with open('/Users/sivab/Documents/purdue/fall2025/nlp/project/antigrav/graphs/' + f"graphs_{i}.pkl", "rb") as f:
-            graphs = pickle.load(f)
-            print(f"Processing {len(graphs)} graphs for n={i}")
-            pairs = itertools.combinations(range(1, 16), i)
-            pairs = list(pairs)
-            print(f"Generated {len(pairs)} combinations for n={i}")
 
-if __name__ == "__main__":
-    start = int(sys.argv[1])
-    end = int(sys.argv[2])
-    files = runner(start, end)
-    # merge the files
-    print(f"Merging {len(files)} files.")
-    merged_file = f"merged_{start}_{end}.jsonl"
-    with open(merged_file, "w") as f:
+def merge_files(files: List[Path], output_file: Path):
+    """Merge multiple JSONL files into one."""
+    with open(output_file, "w") as f:
         for file in files:
             with open(file, "r") as f2:
                 for line in f2:
                     f.write(line)
-    print(f"Merged {len(files)} files to {merged_file}.")
+    print(f"Merged {len(files)} files to {output_file}.")
 
-# if __name__ == "__main__":
-#     start = int(sys.argv[1])
-#     end = int(sys.argv[2])
-#     trunner(start, end)
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate dataset examples from graph pickle files."
+    )
+    parser.add_argument(
+        "start",
+        type=int,
+        help="Minimum number of nodes in graphs",
+    )
+    parser.add_argument(
+        "end",
+        type=int,
+        help="Maximum number of nodes in graphs",
+    )
+    parser.add_argument(
+        "--graphs-dir",
+        type=Path,
+        default=Path("data/raw/graphs"),
+        help="Directory containing graph pickle files (default: data/raw/graphs)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("data/processed"),
+        help="Directory to save output files (default: data/processed)",
+    )
+    parser.add_argument(
+        "--merge",
+        action="store_true",
+        help="Merge all generated files into one",
+    )
+
+    args = parser.parse_args()
+
+    files = runner(args.start, args.end, args.graphs_dir, args.output_dir)
+
+    if args.merge and files:
+        merged_file = args.output_dir / f"merged_{args.start}_{args.end}.jsonl"
+        merge_files(files, merged_file)
+
+
+if __name__ == "__main__":
+    main()

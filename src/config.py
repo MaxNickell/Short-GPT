@@ -3,23 +3,50 @@ from dataclasses import dataclass
 
 @dataclass
 class ShortGPTConfig:
-    """
-    This class stores every architectural and training-related hyperparameter
-    needed to build the model. All components (embeddings, attention,
-    RoPE, transformer blocks) will receive this config object.
-    """
-    # fixed vocabulary size
+    """Model architecture configuration."""
     vocab_size: int = 24
+    d_model: int = 256
+    n_layers: int = 2
+    n_heads: int = 4
+    d_ff: int = 1024
+    max_seq_len: int = 640
+    rope_base: int = 10000
+    dropout: float = 0.1
 
-    # Model architecture
-    d_model: int = 256  # hidden dimension
-    n_layers: int = 2  # number of transformer blocks
-    n_heads: int = 4  # number of attention heads
-    d_ff: int = 1024  # feedforward inner dim
 
-    # Token settings
-    max_seq_len: int = 640 # max context window
-    rope_base: int = 10000  # RoPE frequency base
+@dataclass
+class DataConfig:
+    """Data splitting configuration. Used by all training phases."""
+    train_frac: float = 0.8
+    val_frac: float = 0.1
+    seed: int = 42
 
-    # Regularization
-    dropout: float = 0.1  # dropout rate
+
+@dataclass
+class PretrainConfig:
+    """Pretraining hyperparameters."""
+    num_epochs: int = 20
+    batch_size: int = 32
+    lr: float = 3e-4
+    weight_decay: float = 0.01
+    max_grad_norm: float = 1.0
+    patience: int = 3
+    min_delta: float = 1e-3
+    log_every: int = 500
+    save_path: str = "checkpoints/pretrained.pt"
+
+
+@dataclass
+class RLConfig:
+    """RL finetuning hyperparameters."""
+    num_epochs: int = 1
+    steps_per_epoch: int = 1000
+    batch_size: int = 32
+    lr: float = 1e-5
+    weight_decay: float = 0.01
+    max_grad_norm: float = 1.0
+    max_new_tokens: int = 64
+    temperature: float = 1.0
+    use_baseline: bool = True
+    log_every: int = 100
+    save_path: str = "checkpoints/rl_finetuned.pt"

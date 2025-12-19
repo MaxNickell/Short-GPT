@@ -98,12 +98,14 @@ def compute_path_reward(
     if node_tokens[-1] != destination:
         return 0.0
 
-    # Adjacency list may have string keys; handle both
+    # Adjacency list may have string keys and string/int values; handle both
     adl = row["adl"]
 
-    def neighbors(u: int):
-        # Try string key first, then int key
-        return adl.get(str(u)) or adl.get(u) or []
+    def neighbors(u: int) -> set:
+        """Get neighbors as a set of integers for consistent comparison."""
+        raw_neighbors = adl.get(str(u)) or adl.get(u) or []
+        # Convert all neighbors to int for consistent comparison
+        return {int(n) for n in raw_neighbors}
 
     # Check each edge v_i -> v_{i+1}
     for u, v in zip(node_tokens[:-1], node_tokens[1:]):
