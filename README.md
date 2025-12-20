@@ -76,10 +76,11 @@ where $L^*$ is the optimal path length and $L$ is the generated path length.
 
 | Metric | Description |
 |--------|-------------|
-| **Exact Match** | Generated path exactly matches ground truth |
-| **Valid Path** | Path uses only valid graph edges |
-| **Optimal Rate** | Path achieves optimal length ($R = 2$) |
-| **Avg Reward** | Mean reward across test set |
+| **Valid Structure** | Output follows `<START_PATH>node<TO>...<TO>node<END_PATH>` format |
+| **Valid Path** | Valid structure AND correct origin/destination AND all edges exist in graph |
+| **Optimal** | Valid path AND path length equals shortest path length |
+
+Note: These metrics are hierarchical — valid path requires valid structure, and optimal requires valid path.
 
 ## Usage
 
@@ -90,10 +91,9 @@ python train_pretrain.py --data data/processed/merged_final.jsonl
 # RL finetune
 python train_rl.py --data data/processed/merged_final.jsonl --checkpoint checkpoints/pretrained.pt
 
-# Evaluate (compare pretrained vs RL)
-python evaluate.py --data data/processed/merged_final.jsonl \
-    --checkpoint checkpoints/pretrained.pt \
-    --compare checkpoints/rl_finetuned.pt
+# Evaluate on test set (outputs to logs/eval_<checkpoint_name>.jsonl)
+PYTHONPATH=. python scripts/eval_test.py --data data/processed/merged_final.jsonl --checkpoint checkpoints/pretrained.pt
+PYTHONPATH=. python scripts/eval_test.py --data data/processed/merged_final.jsonl --checkpoint checkpoints/rl_finetuned.pt
 ```
 
 ## Configuration

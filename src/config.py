@@ -47,7 +47,7 @@ class RLConfig:
     num_epochs: int = 10
     steps_per_epoch: int = 5000
     batch_size: int = 32
-    lr: float = 1e-5
+    lr: float = 1e-4
     weight_decay: float = 0.01
     max_grad_norm: float = 1.0
     max_new_tokens: int = 64
