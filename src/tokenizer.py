@@ -21,7 +21,7 @@ class ShortGPTTokenizer:
             "<START_PATH>",
             "<END_PATH>",
             "<TO>",
-        ] + [str(i) for i in range(16)]  # node identifiers "0"–"15"
+        ] + [str(i) for i in range(1, 16)]  # node identifiers "0"–"15"
 
         # lookup dictionaries
         self.token_to_id = {tok: i for i, tok in enumerate(self.tokens)}
